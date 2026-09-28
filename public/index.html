@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Student Placement & Application Tracker</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+
+            <div class="logo">
+                <div class="logo-icon">P</div>
+
+                <div>
+                    <h2>Placement</h2>
+                    <span>Tracker</span>
+                </div>
+            </div>
+
+            <nav>
+
+                <button class="nav-item active" data-section="dashboard">
+                    📊 Dashboard
+                </button>
+
+                <button class="nav-item" data-section="companies">
+                    🏢 Companies
+                </button>
+
+                <button class="nav-item" data-section="applications">
+                    📋 Applications
+                </button>
+
+                <button class="nav-item" data-section="interviews">
+                    🎯 Interviews
+                </button>
+
+                <button class="nav-item" data-section="skills">
+                    💡 Skills
+                </button>
+
+                <button class="nav-item" data-section="profile">
+                    👤 Profile
+                </button>
+
+            </nav>
+
+            <div class="student-card">
+
+                <div class="avatar">
+                    VP
+                </div>
+
+                <div>
+                    <strong>Student</strong>
+                    <small>Placement Journey</small>
+                </div>
+
+            </div>
+
+        </aside>
+
+
+        <!-- MAIN CONTENT -->
+        <main class="main">
+
+            <!-- TOP BAR -->
+            <header class="topbar">
+
+                <div>
+
+                    <h1 id="pageTitle">
+                        Dashboard
+                    </h1>
+
+                    <p id="pageSubtitle">
+                        Track your placement journey in one place.
+                    </p>
+
+                </div>
+
+                <button class="primary-btn" id="quickAdd">
+                    + Add Application
+                </button>
+
+            </header>
+
+
+            <!-- ================= DASHBOARD ================= -->
+
+            <section id="dashboard" class="section active-section">
+
+                <div class="stats-grid">
+
+                    <div class="stat-card">
+
+                        <span>
+                            Total Companies
+                        </span>
+
+                        <strong id="totalCompanies">
+                            0
+                        </strong>
+
+                    </div>
+
+
+                    <div class="stat-card">
+
+                        <span>
+                            Applications
+                        </span>
+
+                        <strong id="totalApplications">
+                            0
+                        </strong>
+
+                    </div>
+
+
+                    <div class="stat-card">
+
+                        <span>
+                            Active Applications
+                        </span>
+
+                        <strong id="activeApplications">
+                            0
+                        </strong>
+
+                    </div>
+
+
+                    <div class="stat-card">
+
+                        <span>
+                            Offers
+                        </span>
+
+                        <strong id="offers">
+                            0
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div class="dashboard-grid">
+
+                    <!-- RECENT APPLICATIONS -->
+
+                    <div class="panel">
+
+                        <div class="panel-header">
+
+                            <h2>
+                                Recent Applications
+                            </h2>
+
+                            <button class="text-btn" data-go="applications">
+                                View All
+                            </button>
+
+                        </div>
+
+                        <div id="recentApplications" class="list">
+                        </div>
+
+                    </div>
+
+
+                    <!-- UPCOMING INTERVIEWS -->
+
+                    <div class="panel">
+
+                        <div class="panel-header">
+
+                            <h2>
+                                Upcoming Interviews
+                            </h2>
+
+                            <button class="text-btn" data-go="interviews">
+                                View All
+                            </button>
+
+                        </div>
+
+                        <div id="upcomingInterviews" class="list">
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ================= COMPANIES ================= -->
+
+            <section id="companies" class="section">
+
+                <div class="section-actions">
+
+                    <input id="companySearch" class="search" type="text" placeholder="Search companies...">
+
+                    <button class="primary-btn" id="addCompanyBtn">
+                        + Add Company
+                    </button>
+
+                </div>
+
+
+                <div class="panel">
+
+                    <div id="companiesList" class="cards">
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ================= APPLICATIONS ================= -->
+
+            <section id="applications" class="section">
+
+                <div class="section-actions">
+
+                    <input id="applicationSearch" class="search" type="text" placeholder="Search applications...">
+
+
+                    <select id="statusFilter">
+
+                        <option value="">
+                            All Status
+                        </option>
+
+                        <option value="Interested">
+                            Interested
+                        </option>
+
+                        <option value="Applied">
+                            Applied
+                        </option>
+
+                        <option value="Assessment">
+                            Assessment
+                        </option>
+
+                        <option value="Technical Interview">
+                            Technical Interview
+                        </option>
+
+                        <option value="HR Interview">
+                            HR Interview
+                        </option>
+
+                        <option value="Selected">
+                            Selected
+                        </option>
+
+                        <option value="Rejected">
+                            Rejected
+                        </option>
+
+                    </select>
+
+
+                    <button class="primary-btn" id="addApplicationBtn">
+                        + Add Application
+                    </button>
+
+                </div>
+
+
+                <div class="panel">
+
+                    <div id="applicationsList" class="cards">
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ================= INTERVIEWS ================= -->
+
+            <section id="interviews" class="section">
+
+                <div class="section-actions">
+
+                    <button class="primary-btn" id="addInterviewBtn">
+                        + Add Interview
+                    </button>
+
+                </div>
+
+
+                <div class="panel">
+
+                    <div id="interviewsList" class="cards">
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ================= SKILLS ================= -->
+
+            <section id="skills" class="section">
+
+                <div class="section-actions">
+
+                    <button class="primary-btn" id="addSkillBtn">
+                        + Add Skill
+                    </button>
+
+                </div>
+
+
+                <div class="panel">
+
+                    <div id="skillsList" class="skills-grid">
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ================= PROFILE ================= -->
+
+            <section id="profile" class="section">
+
+                <div class="panel profile-panel">
+
+                    <div class="profile-header">
+
+                        <div class="profile-avatar">
+                            VP
+                        </div>
+
+                        <div>
+
+                            <h2 id="profileName">
+                                Student
+                            </h2>
+
+                            <p id="profileBranch">
+                                CSE - Artificial Intelligence & Machine Learning
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="profile-details">
+
+                        <div>
+
+                            <span>
+                                College
+                            </span>
+
+                            <strong id="profileCollege">
+                                -
+                            </strong>
+
+                        </div>
+
+
+                        <div>
+
+                            <span>
+                                Year
+                            </span>
+
+                            <strong id="profileYear">
+                                -
+                            </strong>
+
+                        </div>
+
+
+                        <div>
+
+                            <span>
+                                CGPA
+                            </span>
+
+                            <strong id="profileCgpa">
+                                -
+                            </strong>
+
+                        </div>
+
+
+                        <div>
+
+                            <span>
+                                Email
+                            </span>
+
+                            <strong id="profileEmail">
+                                -
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+
+                    <button class="primary-btn profile-edit" id="editProfileBtn">
+                        Edit Profile
+                    </button>
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </div>
+
+
+    <!-- ================= MODAL ================= -->
+
+    <div id="modal" class="modal hidden">
+
+        <div class="modal-box">
+
+            <div class="modal-header">
+
+                <h2 id="modalTitle">
+                    Add
+                </h2>
+
+                <button id="closeModal" type="button">
+                    ×
+                </button>
+
+            </div>
+
+
+            <form id="modalForm">
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <script src="js/app.js"></script>
+
+</body>
+
+</html>
