@@ -1,113 +1,157 @@
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const fs = require("fs").promises;
+const { connectDB, client } = require("./db");
 
 const app = express();
-const PORT = 3000;
-
-const DATA_DIR = path.join(__dirname, "data");
-
-const FILES = {
-    companies: path.join(DATA_DIR, "companies.json"),
-    applications: path.join(DATA_DIR, "applications.json"),
-    interviews: path.join(DATA_DIR, "interviews.json"),
-    skills: path.join(DATA_DIR, "skills.json"),
-    profile: path.join(DATA_DIR, "profile.json")
-};
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-async function ensureDataFiles() {
-    await fs.mkdir(DATA_DIR, { recursive: true });
+// Generate a unique ID for each record
+function createId() {
+    return Date.now().toString() +
+        Math.random().toString(36).slice(2, 7);
+}
 
-    const defaults = {
-        companies: [],
-        applications: [],
-        interviews: [],
-        skills: [],
-        profile: {
+// Remove MongoDB's internal _id from API responses
+function cleanDocument(document) {
+    if (!document) return document;
+
+    const { _id, ...rest } = document;
+    return rest;
+}
+
+function cleanDocuments(documents) {
+    return documents.map(cleanDocument);
+}
+
+// Keep skill progress between 0 and 100
+function clampProgress(value) {
+    return Math.min(100, Math.max(0, Number(value) || 0));
+}
+
+let db;
+let companies;
+let applications;
+let interviews;
+let skills;
+let profiles;
+
+/* =========================
+   HEALTH CHECK
+========================= */
+
+app.get("/api/health", async (req, res) => {
+    try {
+        await db.command({ ping: 1 });
+
+        res.json({
+            success: true,
+            message: "Student Placement Tracker API is running",
+            database: "connected"
+        });
+    } catch (error) {
+        console.error("Health check failed:", error);
+
+        res.status(500).json({
+            success: false,
+            error: "Database connection failed"
+        });
+    }
+});
+
+/* =========================
+   PROFILE
+========================= */
+
+// Get student profile
+app.get("/api/profile", async (req, res) => {
+    try {
+        const profile = await profiles.findOne({ _id: "main" });
+
+        if (!profile) {
+            return res.json({
+                name: "Student",
+                branch: "CSE - Artificial Intelligence & Machine Learning",
+                year: "3rd Year",
+                college: "ANITS",
+                email: "student@example.com",
+                cgpa: ""
+            });
+        }
+
+        res.json(cleanDocument(profile));
+    } catch (error) {
+        console.error("Failed to load profile:", error);
+
+        res.status(500).json({
+            error: "Failed to load profile"
+        });
+    }
+});
+
+// Update student profile
+app.put("/api/profile", async (req, res) => {
+    try {
+        const current = await profiles.findOne({ _id: "main" }) || {
             name: "Student",
             branch: "CSE - Artificial Intelligence & Machine Learning",
             year: "3rd Year",
             college: "ANITS",
             email: "student@example.com",
             cgpa: ""
-        }
-    };
-
-    for (const [key, file] of Object.entries(FILES)) {
-        try {
-            await fs.access(file);
-        } catch {
-            await fs.writeFile(
-                file,
-                JSON.stringify(defaults[key], null, 2)
-            );
-        }
-    }
-}
-
-async function readData(file) {
-    const data = await fs.readFile(file, "utf8");
-    return JSON.parse(data || "[]");
-}
-
-async function writeData(file, data) {
-    await fs.writeFile(file, JSON.stringify(data, null, 2));
-}
-
-function createId() {
-    return Date.now().toString() + Math.random().toString(36).slice(2, 7);
-}
-
-/* HEALTH */
-
-app.get("/api/health", (req, res) => {
-    res.json({
-        success: true,
-        message: "Student Placement Tracker API is running"
-    });
-});
-
-/* PROFILE */
-
-app.get("/api/profile", async (req, res) => {
-    try {
-        res.json(await readData(FILES.profile));
-    } catch {
-        res.status(500).json({ error: "Failed to load profile" });
-    }
-});
-
-app.put("/api/profile", async (req, res) => {
-    try {
-        const current = await readData(FILES.profile);
+        };
 
         const updated = {
             ...current,
             ...req.body
         };
 
-        await writeData(FILES.profile, updated);
+        delete updated._id;
+
+        await profiles.updateOne(
+            { _id: "main" },
+            { $set: updated },
+            { upsert: true }
+        );
+
         res.json(updated);
-    } catch {
-        res.status(500).json({ error: "Failed to update profile" });
+    } catch (error) {
+        console.error("Failed to update profile:", error);
+
+        res.status(500).json({
+            error: "Failed to update profile"
+        });
     }
 });
 
-/* COMPANIES */
+/* =========================
+   COMPANIES
+========================= */
 
+// Get all companies
 app.get("/api/companies", async (req, res) => {
     try {
-        res.json(await readData(FILES.companies));
-    } catch {
-        res.status(500).json({ error: "Failed to load companies" });
+        const rows = await companies
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.json(cleanDocuments(rows));
+    } catch (error) {
+        console.error("Failed to load companies:", error);
+
+        res.status(500).json({
+            error: "Failed to load companies"
+        });
     }
 });
 
+// Add a company
 app.post("/api/companies", async (req, res) => {
     try {
         const { name, role } = req.body;
@@ -117,8 +161,6 @@ app.post("/api/companies", async (req, res) => {
                 error: "Company name and role are required"
             });
         }
-
-        const companies = await readData(FILES.companies);
 
         const company = {
             id: createId(),
@@ -130,64 +172,99 @@ app.post("/api/companies", async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        companies.push(company);
-        await writeData(FILES.companies, companies);
+        await companies.insertOne(company);
 
         res.status(201).json(company);
-    } catch {
-        res.status(500).json({ error: "Failed to add company" });
+    } catch (error) {
+        console.error("Failed to add company:", error);
+
+        res.status(500).json({
+            error: "Failed to add company"
+        });
     }
 });
 
+// Update a company
 app.put("/api/companies/:id", async (req, res) => {
     try {
-        const companies = await readData(FILES.companies);
-        const index = companies.findIndex(c => c.id === req.params.id);
+        const current = await companies.findOne({
+            id: req.params.id
+        });
 
-        if (index === -1) {
-            return res.status(404).json({ error: "Company not found" });
+        if (!current) {
+            return res.status(404).json({
+                error: "Company not found"
+            });
         }
 
-        companies[index] = {
-            ...companies[index],
+        const updated = {
+            ...cleanDocument(current),
             ...req.body,
-            id: companies[index].id,
+            id: current.id,
             updatedAt: new Date().toISOString()
         };
 
-        await writeData(FILES.companies, companies);
-        res.json(companies[index]);
-    } catch {
-        res.status(500).json({ error: "Failed to update company" });
+        await companies.updateOne(
+            { id: req.params.id },
+            { $set: updated }
+        );
+
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to update company:", error);
+
+        res.status(500).json({
+            error: "Failed to update company"
+        });
     }
 });
 
+// Delete a company
 app.delete("/api/companies/:id", async (req, res) => {
     try {
-        const companies = await readData(FILES.companies);
-        const filtered = companies.filter(c => c.id !== req.params.id);
+        const result = await companies.deleteOne({
+            id: req.params.id
+        });
 
-        if (filtered.length === companies.length) {
-            return res.status(404).json({ error: "Company not found" });
+        if (!result.deletedCount) {
+            return res.status(404).json({
+                error: "Company not found"
+            });
         }
 
-        await writeData(FILES.companies, filtered);
         res.json({ success: true });
-    } catch {
-        res.status(500).json({ error: "Failed to delete company" });
+    } catch (error) {
+        console.error("Failed to delete company:", error);
+
+        res.status(500).json({
+            error: "Failed to delete company"
+        });
     }
 });
 
-/* APPLICATIONS */
+/* =========================
+   APPLICATIONS
+========================= */
 
+// Get all applications
 app.get("/api/applications", async (req, res) => {
     try {
-        res.json(await readData(FILES.applications));
-    } catch {
-        res.status(500).json({ error: "Failed to load applications" });
+        const rows = await applications
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.json(cleanDocuments(rows));
+    } catch (error) {
+        console.error("Failed to load applications:", error);
+
+        res.status(500).json({
+            error: "Failed to load applications"
+        });
     }
 });
 
+// Add an application
 app.post("/api/applications", async (req, res) => {
     try {
         const { company, role } = req.body;
@@ -197,8 +274,6 @@ app.post("/api/applications", async (req, res) => {
                 error: "Company and role are required"
             });
         }
-
-        const applications = await readData(FILES.applications);
 
         const application = {
             id: createId(),
@@ -211,64 +286,99 @@ app.post("/api/applications", async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        applications.push(application);
-        await writeData(FILES.applications, applications);
+        await applications.insertOne(application);
 
         res.status(201).json(application);
-    } catch {
-        res.status(500).json({ error: "Failed to add application" });
+    } catch (error) {
+        console.error("Failed to add application:", error);
+
+        res.status(500).json({
+            error: "Failed to add application"
+        });
     }
 });
 
+// Update an application
 app.put("/api/applications/:id", async (req, res) => {
     try {
-        const applications = await readData(FILES.applications);
-        const index = applications.findIndex(a => a.id === req.params.id);
+        const current = await applications.findOne({
+            id: req.params.id
+        });
 
-        if (index === -1) {
-            return res.status(404).json({ error: "Application not found" });
+        if (!current) {
+            return res.status(404).json({
+                error: "Application not found"
+            });
         }
 
-        applications[index] = {
-            ...applications[index],
+        const updated = {
+            ...cleanDocument(current),
             ...req.body,
-            id: applications[index].id,
+            id: current.id,
             updatedAt: new Date().toISOString()
         };
 
-        await writeData(FILES.applications, applications);
-        res.json(applications[index]);
-    } catch {
-        res.status(500).json({ error: "Failed to update application" });
+        await applications.updateOne(
+            { id: req.params.id },
+            { $set: updated }
+        );
+
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to update application:", error);
+
+        res.status(500).json({
+            error: "Failed to update application"
+        });
     }
 });
 
+// Delete an application
 app.delete("/api/applications/:id", async (req, res) => {
     try {
-        const applications = await readData(FILES.applications);
-        const filtered = applications.filter(a => a.id !== req.params.id);
+        const result = await applications.deleteOne({
+            id: req.params.id
+        });
 
-        if (filtered.length === applications.length) {
-            return res.status(404).json({ error: "Application not found" });
+        if (!result.deletedCount) {
+            return res.status(404).json({
+                error: "Application not found"
+            });
         }
 
-        await writeData(FILES.applications, filtered);
         res.json({ success: true });
-    } catch {
-        res.status(500).json({ error: "Failed to delete application" });
+    } catch (error) {
+        console.error("Failed to delete application:", error);
+
+        res.status(500).json({
+            error: "Failed to delete application"
+        });
     }
 });
 
-/* INTERVIEWS */
+/* =========================
+   INTERVIEWS
+========================= */
 
+// Get all interviews
 app.get("/api/interviews", async (req, res) => {
     try {
-        res.json(await readData(FILES.interviews));
-    } catch {
-        res.status(500).json({ error: "Failed to load interviews" });
+        const rows = await interviews
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.json(cleanDocuments(rows));
+    } catch (error) {
+        console.error("Failed to load interviews:", error);
+
+        res.status(500).json({
+            error: "Failed to load interviews"
+        });
     }
 });
 
+// Add an interview
 app.post("/api/interviews", async (req, res) => {
     try {
         if (!req.body.company || !req.body.date) {
@@ -276,8 +386,6 @@ app.post("/api/interviews", async (req, res) => {
                 error: "Company and date are required"
             });
         }
-
-        const interviews = await readData(FILES.interviews);
 
         const interview = {
             id: createId(),
@@ -291,64 +399,99 @@ app.post("/api/interviews", async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        interviews.push(interview);
-        await writeData(FILES.interviews, interviews);
+        await interviews.insertOne(interview);
 
         res.status(201).json(interview);
-    } catch {
-        res.status(500).json({ error: "Failed to add interview" });
+    } catch (error) {
+        console.error("Failed to add interview:", error);
+
+        res.status(500).json({
+            error: "Failed to add interview"
+        });
     }
 });
 
+// Update an interview
 app.put("/api/interviews/:id", async (req, res) => {
     try {
-        const interviews = await readData(FILES.interviews);
-        const index = interviews.findIndex(i => i.id === req.params.id);
+        const current = await interviews.findOne({
+            id: req.params.id
+        });
 
-        if (index === -1) {
-            return res.status(404).json({ error: "Interview not found" });
+        if (!current) {
+            return res.status(404).json({
+                error: "Interview not found"
+            });
         }
 
-        interviews[index] = {
-            ...interviews[index],
+        const updated = {
+            ...cleanDocument(current),
             ...req.body,
-            id: interviews[index].id,
+            id: current.id,
             updatedAt: new Date().toISOString()
         };
 
-        await writeData(FILES.interviews, interviews);
-        res.json(interviews[index]);
-    } catch {
-        res.status(500).json({ error: "Failed to update interview" });
+        await interviews.updateOne(
+            { id: req.params.id },
+            { $set: updated }
+        );
+
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to update interview:", error);
+
+        res.status(500).json({
+            error: "Failed to update interview"
+        });
     }
 });
 
+// Delete an interview
 app.delete("/api/interviews/:id", async (req, res) => {
     try {
-        const interviews = await readData(FILES.interviews);
-        const filtered = interviews.filter(i => i.id !== req.params.id);
+        const result = await interviews.deleteOne({
+            id: req.params.id
+        });
 
-        if (filtered.length === interviews.length) {
-            return res.status(404).json({ error: "Interview not found" });
+        if (!result.deletedCount) {
+            return res.status(404).json({
+                error: "Interview not found"
+            });
         }
 
-        await writeData(FILES.interviews, filtered);
         res.json({ success: true });
-    } catch {
-        res.status(500).json({ error: "Failed to delete interview" });
+    } catch (error) {
+        console.error("Failed to delete interview:", error);
+
+        res.status(500).json({
+            error: "Failed to delete interview"
+        });
     }
 });
 
-/* SKILLS */
+/* =========================
+   SKILLS
+========================= */
 
+// Get all skills
 app.get("/api/skills", async (req, res) => {
     try {
-        res.json(await readData(FILES.skills));
-    } catch {
-        res.status(500).json({ error: "Failed to load skills" });
+        const rows = await skills
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.json(cleanDocuments(rows));
+    } catch (error) {
+        console.error("Failed to load skills:", error);
+
+        res.status(500).json({
+            error: "Failed to load skills"
+        });
     }
 });
 
+// Add a skill
 app.post("/api/skills", async (req, res) => {
     try {
         if (!req.body.name) {
@@ -357,118 +500,191 @@ app.post("/api/skills", async (req, res) => {
             });
         }
 
-        const skills = await readData(FILES.skills);
-
         const skill = {
             id: createId(),
             name: req.body.name,
             category: req.body.category || "Technical",
-            progress: Math.min(100, Math.max(0, Number(req.body.progress) || 0)),
+            progress: clampProgress(req.body.progress),
             createdAt: new Date().toISOString()
         };
 
-        skills.push(skill);
-        await writeData(FILES.skills, skills);
+        await skills.insertOne(skill);
 
         res.status(201).json(skill);
-    } catch {
-        res.status(500).json({ error: "Failed to add skill" });
+    } catch (error) {
+        console.error("Failed to add skill:", error);
+
+        res.status(500).json({
+            error: "Failed to add skill"
+        });
     }
 });
 
+// Update a skill
 app.put("/api/skills/:id", async (req, res) => {
     try {
-        const skills = await readData(FILES.skills);
-        const index = skills.findIndex(s => s.id === req.params.id);
+        const current = await skills.findOne({
+            id: req.params.id
+        });
 
-        if (index === -1) {
-            return res.status(404).json({ error: "Skill not found" });
+        if (!current) {
+            return res.status(404).json({
+                error: "Skill not found"
+            });
         }
 
-        skills[index] = {
-            ...skills[index],
+        const updated = {
+            ...cleanDocument(current),
             ...req.body,
-            id: skills[index].id,
-            progress: Math.min(
-                100,
-                Math.max(0, Number(req.body.progress ?? skills[index].progress))
+            id: current.id,
+            progress: clampProgress(
+                req.body.progress ?? current.progress
             )
         };
 
-        await writeData(FILES.skills, skills);
-        res.json(skills[index]);
-    } catch {
-        res.status(500).json({ error: "Failed to update skill" });
+        await skills.updateOne(
+            { id: req.params.id },
+            { $set: updated }
+        );
+
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to update skill:", error);
+
+        res.status(500).json({
+            error: "Failed to update skill"
+        });
     }
 });
 
+// Delete a skill
 app.delete("/api/skills/:id", async (req, res) => {
     try {
-        const skills = await readData(FILES.skills);
-        const filtered = skills.filter(s => s.id !== req.params.id);
+        const result = await skills.deleteOne({
+            id: req.params.id
+        });
 
-        if (filtered.length === skills.length) {
-            return res.status(404).json({ error: "Skill not found" });
+        if (!result.deletedCount) {
+            return res.status(404).json({
+                error: "Skill not found"
+            });
         }
 
-        await writeData(FILES.skills, filtered);
         res.json({ success: true });
-    } catch {
-        res.status(500).json({ error: "Failed to delete skill" });
+    } catch (error) {
+        console.error("Failed to delete skill:", error);
+
+        res.status(500).json({
+            error: "Failed to delete skill"
+        });
     }
 });
 
-/* DASHBOARD */
+/* =========================
+   DASHBOARD
+========================= */
 
 app.get("/api/dashboard", async (req, res) => {
     try {
-        const [companies, applications, interviews, skills] =
-            await Promise.all([
-                readData(FILES.companies),
-                readData(FILES.applications),
-                readData(FILES.interviews),
-                readData(FILES.skills)
-            ]);
+        const [
+            totalCompanies,
+            totalApplications,
+            totalInterviews,
+            totalSkills,
+            allApplications
+        ] = await Promise.all([
+            companies.countDocuments(),
+            applications.countDocuments(),
+            interviews.countDocuments(),
+            skills.countDocuments(),
+            applications.find(
+                {},
+                { projection: { status: 1, _id: 0 } }
+            ).toArray()
+        ]);
 
-        const offers = applications.filter(a =>
-            ["selected", "offer"].includes((a.status || "").toLowerCase())
+        const offers = allApplications.filter(application =>
+            ["selected", "offer"].includes(
+                (application.status || "").toLowerCase()
+            )
         ).length;
 
-        const rejected = applications.filter(a =>
-            (a.status || "").toLowerCase() === "rejected"
+        const rejected = allApplications.filter(application =>
+            (application.status || "").toLowerCase() === "rejected"
         ).length;
 
-        const active = applications.filter(a =>
+        const active = allApplications.filter(application =>
             !["selected", "offer", "rejected"].includes(
-                (a.status || "").toLowerCase()
+                (application.status || "").toLowerCase()
             )
         ).length;
 
         res.json({
-            totalCompanies: companies.length,
-            totalApplications: applications.length,
+            totalCompanies,
+            totalApplications,
             activeApplications: active,
-            interviews: interviews.length,
+            interviews: totalInterviews,
             offers,
             rejected,
-            skills: skills.length
+            skills: totalSkills
         });
-    } catch {
-        res.status(500).json({ error: "Failed to load dashboard" });
+    } catch (error) {
+        console.error("Failed to load dashboard:", error);
+
+        res.status(500).json({
+            error: "Failed to load dashboard"
+        });
     }
 });
 
-/* START */
+/* =========================
+   START SERVER
+========================= */
 
 async function startServer() {
     try {
-        await ensureDataFiles();
+        // Connect to MongoDB Atlas
+        db = await connectDB();
+
+        // Select MongoDB collections
+        companies = db.collection("companies");
+        applications = db.collection("applications");
+        interviews = db.collection("interviews");
+        skills = db.collection("skills");
+        profiles = db.collection("profiles");
+
+        // Create a default profile if it does not exist
+        await profiles.updateOne(
+            { _id: "main" },
+            {
+                $setOnInsert: {
+                    name: "Student",
+                    branch: "CSE - Artificial Intelligence & Machine Learning",
+                    year: "3rd Year",
+                    college: "ANITS",
+                    email: "student@example.com",
+                    cgpa: ""
+                }
+            },
+            { upsert: true }
+        );
 
         app.listen(PORT, () => {
-            console.log(`Server running at http://localhost:${PORT}`);
+            console.log(
+                `Server running at http://localhost:${PORT}`
+            );
+            console.log(
+                "MongoDB Atlas connected and ready."
+            );
         });
     } catch (error) {
-        console.error("Server startup failed:", error);
+        console.error(
+            "Server startup failed:",
+            error.message
+        );
+
+        await client.close().catch(() => {});
+        process.exit(1);
     }
 }
 
